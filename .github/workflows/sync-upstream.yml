@@ -89,11 +89,22 @@ jobs:
             exit 1
           fi
 
-          if git cat-file -e "${pre_sync_sha}:wrangler.jsonc" 2>/dev/null; then
-            git checkout "${pre_sync_sha}" -- wrangler.jsonc
-          else
-            rm -f wrangler.jsonc
-          fi
+          excluded_paths=(
+            'wrangler.jsonc'
+            'app/assets/css/tailwind.css'
+            'app/components/home/Hero.vue'
+            'app/error.vue'
+            'app/layouts/home.vue'
+            'app/pages/index.vue'
+          )
+
+          for path in "${excluded_paths[@]}"; do
+            if git cat-file -e "${pre_sync_sha}:${path}" 2>/dev/null; then
+              git checkout "${pre_sync_sha}" -- "${path}"
+            else
+              rm -rf -- "${path}"
+            fi
+          done
 
           post_merge_sha="$(git rev-parse HEAD)"
 
@@ -109,5 +120,5 @@ jobs:
           fi
 
           git add -A
-          git commit -m 'chore: sync upstream (exclude wrangler.jsonc)'
+          git commit -m 'chore: sync upstream (exclude local overrides)'
           git push origin "${current_branch}"
