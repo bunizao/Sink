@@ -1,0 +1,113 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      upstream_repo:
+        description: 'Upstream repository (owner/name), optional'
+        required: false
+        type: string
+      upstream_branch:
+        description: 'Upstream branch, optional'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve upstream
+        id: resolve
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const inputRepo = '${{ github.event.inputs.upstream_repo || '' }}'.trim()
+            const inputBranch = '${{ github.event.inputs.upstream_branch || '' }}'.trim()
+            const varRepo = '${{ vars.UPSTREAM_REPO || '' }}'.trim()
+            const varBranch = '${{ vars.UPSTREAM_BRANCH || '' }}'.trim()
+
+            let repo = inputRepo || varRepo
+            let branch = inputBranch || varBranch
+
+            if (!repo || !branch) {
+              const { data } = await github.rest.repos.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+              })
+
+              if (!repo)
+                repo = data.parent?.full_name || ''
+
+              if (!branch)
+                branch = data.parent?.default_branch || data.default_branch
+            }
+
+            if (!repo) {
+              core.setFailed('Cannot resolve upstream repository. Set vars.UPSTREAM_REPO or pass workflow_dispatch input upstream_repo.')
+              return
+            }
+
+            core.setOutput('repo', repo)
+            core.setOutput('branch', branch)
+
+      - name: Configure Git
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Sync upstream changes
+        env:
+          UPSTREAM_REPO: ${{ steps.resolve.outputs.repo }}
+          UPSTREAM_BRANCH: ${{ steps.resolve.outputs.branch }}
+        run: |
+          set -euo pipefail
+
+          current_branch="${GITHUB_REF_NAME}"
+          pre_sync_sha="$(git rev-parse HEAD)"
+
+          git remote remove upstream 2>/dev/null || true
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch upstream "${UPSTREAM_BRANCH}"
+
+          if ! git merge --no-edit "upstream/${UPSTREAM_BRANCH}"; then
+            git merge --abort || true
+            echo 'Sync failed due to merge conflicts.'
+            exit 1
+          fi
+
+          if git cat-file -e "${pre_sync_sha}:wrangler.jsonc" 2>/dev/null; then
+            git checkout "${pre_sync_sha}" -- wrangler.jsonc
+          else
+            rm -f wrangler.jsonc
+          fi
+
+          post_merge_sha="$(git rev-parse HEAD)"
+
+          if git diff --quiet && git diff --cached --quiet; then
+            if [ "${post_merge_sha}" = "${pre_sync_sha}" ]; then
+              echo 'No changes to sync.'
+              exit 0
+            fi
+
+            echo 'Merged upstream changes, pushing...'
+            git push origin "${current_branch}"
+            exit 0
+          fi
+
+          git add -A
+          git commit -m 'chore: sync upstream (exclude wrangler.jsonc)'
+          git push origin "${current_branch}"
