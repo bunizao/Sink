@@ -1,10 +1,10 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "sink",
-  "main": ".output/server/index.mjs",
+  "main": "dist/server/index.mjs",
   "assets": {
     "binding": "ASSETS",
-    "directory": ".output/public",
+    "directory": "dist/public",
     "html_handling": "drop-trailing-slash"
   },
   "compatibility_date": "2025-05-08",
@@ -13,14 +13,6 @@
   ],
   "keep_vars": true,
   "upload_source_maps": true,
-  "observability": {
-    "logs": {
-      "enabled": true
-    },
-    "traces": {
-      "enabled": true
-    }
-  },
   "ai": {
     "binding": "AI",
     "remote": true
