@@ -1,10 +1,9 @@
+<script setup lang="ts">
+definePageMeta({
+  layout: 'home',
+})
+</script>
+
 <template>
-  <div class="flex flex-col justify-center">
-    <HomeHero />
-    <HomeLogos />
-    <HomeFeatures />
-    <HomeStats />
-    <HomeTestimonials />
-    <HomeCta />
-  </div>
+  <HomeHero />
 </template>
