@@ -13,7 +13,7 @@ const MetricsQuerySchema = QuerySchema.extend({
 })
 
 function query2sql(query: z.infer<typeof MetricsQuerySchema>, event: H3Event): string {
-  const filter = query2filter(query)
+  const filter = query2accessFilter(query)
   const { dataset } = useRuntimeConfig(event)
 
   const sql = select(`${logsMap[query.type]} as name, SUM(_sample_interval) as count`)

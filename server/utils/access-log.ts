@@ -35,6 +35,7 @@ export const blobsMap = {
   blob14: 'device',
   blob15: 'deviceType',
   blob16: 'COLO',
+  blob17: 'eventType',
 } as const
 
 export const doublesMap = {
@@ -92,9 +93,25 @@ export function doubles2logs(doubles: number[]) {
   }, {} as Partial<LogsMap>)
 }
 
-export function useAccessLog(event: H3Event) {
-  const ip = getHeader(event, 'cf-connecting-ip') || getHeader(event, 'x-real-ip') || getRequestIP(event, { xForwardedFor: true })
+type LogEventType = 'access' | 'create'
 
+interface LogLinkContext {
+  id?: string
+  slug?: string
+  url?: string
+}
+
+interface RequestLogContext {
+  cf: IncomingRequestCfProperties | undefined
+  ip: string | undefined
+  language: string | undefined
+  referer: string | undefined
+  uaInfo: ReturnType<UAParser['getResult']>
+  userAgent: string
+}
+
+function getRequestLogContext(event: H3Event): RequestLogContext {
+  const ip = getHeader(event, 'cf-connecting-ip') || getHeader(event, 'x-real-ip') || getRequestIP(event, { xForwardedFor: true })
   const { host: referer } = parseURL(getHeader(event, 'referer'))
 
   const acceptLanguage = getHeader(event, 'accept-language') || ''
@@ -111,43 +128,64 @@ export function useAccessLog(event: H3Event) {
   })).getResult()
 
   const { cloudflare } = event.context
-  const { request: { cf }, env } = cloudflare
+  const { request: { cf } } = cloudflare
+
+  return {
+    cf,
+    ip,
+    language,
+    referer,
+    uaInfo,
+    userAgent,
+  }
+}
+
+function createRequestLogs(event: H3Event, link: LogLinkContext, request: RequestLogContext, eventType: LogEventType): LogsMap {
+  const regionNames = new Intl.DisplayNames(['en'], { type: 'region' })
+  const countryName = regionNames.of(request.cf?.country || 'WD') // fallback to "Worldwide"
+
+  return {
+    url: link.url,
+    slug: link.slug,
+    ua: request.userAgent,
+    ip: request.ip,
+    referer: request.referer,
+    country: request.cf?.country,
+    region: `${getFlag(request.cf?.country)} ${[request.cf?.region, countryName].filter(Boolean).join(',')}`,
+    city: `${getFlag(request.cf?.country)} ${[request.cf?.city, countryName].filter(Boolean).join(',')}`,
+    timezone: request.cf?.timezone,
+    language: request.language,
+    os: request.uaInfo?.os?.name,
+    browser: request.uaInfo?.browser?.name,
+    browserType: request.uaInfo?.browser?.type,
+    device: request.uaInfo?.device?.model,
+    deviceType: request.uaInfo?.device?.type,
+    COLO: request.cf?.colo,
+    eventType,
+
+    // For RealTime Globe
+    latitude: Number(request.cf?.latitude || getHeader(event, 'cf-iplatitude') || 0),
+    longitude: Number(request.cf?.longitude || getHeader(event, 'cf-iplongitude') || 0),
+  }
+}
+
+export function useAccessLog(event: H3Event) {
+  const requestLogContext = getRequestLogContext(event)
+  const { cloudflare } = event.context
+  const { env } = cloudflare
   const link = event.context.link || {}
 
-  const isBot = cf?.botManagement?.verifiedBot
-    || ['crawler', 'fetcher'].includes(uaInfo?.browser?.type || '')
-    || ['spider', 'bot'].includes(uaInfo?.browser?.name?.toLowerCase() || '')
+  const isBot = requestLogContext.cf?.botManagement?.verifiedBot
+    || ['crawler', 'fetcher'].includes(requestLogContext.uaInfo?.browser?.type || '')
+    || ['spider', 'bot'].includes(requestLogContext.uaInfo?.browser?.name?.toLowerCase() || '')
 
   const { disableBotAccessLog } = useRuntimeConfig(event)
   if (isBot && disableBotAccessLog) {
-    console.log('bot access log disabled:', userAgent)
+    console.log('bot access log disabled:', requestLogContext.userAgent)
     return Promise.resolve()
   }
 
-  const regionNames = new Intl.DisplayNames(['en'], { type: 'region' })
-  const countryName = regionNames.of(cf?.country || 'WD') // fallback to "Worldwide"
-  const accessLogs = {
-    url: link.url,
-    slug: link.slug,
-    ua: userAgent,
-    ip,
-    referer,
-    country: cf?.country,
-    region: `${getFlag(cf?.country)} ${[cf?.region, countryName].filter(Boolean).join(',')}`,
-    city: `${getFlag(cf?.country)} ${[cf?.city, countryName].filter(Boolean).join(',')}`,
-    timezone: cf?.timezone,
-    language,
-    os: uaInfo?.os?.name,
-    browser: uaInfo?.browser?.name,
-    browserType: uaInfo?.browser?.type,
-    device: uaInfo?.device?.model,
-    deviceType: uaInfo?.device?.type,
-    COLO: cf?.colo,
-
-    // For RealTime Globe
-    latitude: Number(cf?.latitude || getHeader(event, 'cf-iplatitude') || 0),
-    longitude: Number(cf?.longitude || getHeader(event, 'cf-iplongitude') || 0),
-  }
+  const accessLogs = createRequestLogs(event, link, requestLogContext, 'access')
 
   if (process.env.NODE_ENV === 'production') {
     return env.ANALYTICS.writeDataPoint({
@@ -158,5 +196,23 @@ export function useAccessLog(event: H3Event) {
   }
 
   console.log('access logs:', accessLogs, logs2blobs(accessLogs), logs2doubles(accessLogs), { ...blobs2logs(logs2blobs(accessLogs)), ...doubles2logs(logs2doubles(accessLogs)) })
+  return Promise.resolve()
+}
+
+export function useCreateLog(event: H3Event, link: Required<LogLinkContext>) {
+  const requestLogContext = getRequestLogContext(event)
+  const { cloudflare } = event.context
+  const { env } = cloudflare
+  const createLogs = createRequestLogs(event, link, requestLogContext, 'create')
+
+  if (process.env.NODE_ENV === 'production') {
+    return env.ANALYTICS.writeDataPoint({
+      indexes: [link.id],
+      blobs: logs2blobs(createLogs),
+      doubles: logs2doubles(createLogs),
+    })
+  }
+
+  console.log('create logs:', createLogs, logs2blobs(createLogs), logs2doubles(createLogs), { ...blobs2logs(logs2blobs(createLogs)), ...doubles2logs(logs2doubles(createLogs)) })
   return Promise.resolve()
 }

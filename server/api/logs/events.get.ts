@@ -5,7 +5,7 @@ import { date2unix } from '@/utils/time'
 const { select } = SqlBricks
 
 function query2sql(query: Query, event: H3Event): string {
-  const filter = query2filter(query)
+  const filter = query2accessFilter(query)
   const { dataset } = useRuntimeConfig(event)
   const sql = select(`*`).from(dataset).where(filter).orderBy('timestamp DESC')
   appendTimeFilter(sql, query)

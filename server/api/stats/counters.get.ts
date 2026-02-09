@@ -4,7 +4,7 @@ import { QuerySchema } from '#shared/schemas/query'
 const { select } = SqlBricks
 
 function query2sql(query: Query, event: H3Event): string {
-  const filter = query2filter(query)
+  const filter = query2accessFilter(query)
   const { dataset } = useRuntimeConfig(event)
   // Use weighted distinct count to account for sampling
   // Formula: COUNT(DISTINCT col) * SUM(_sample_interval) / COUNT() ≈ actual distinct count
