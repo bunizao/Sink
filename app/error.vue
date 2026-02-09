@@ -161,10 +161,8 @@ function handleBack() {
             <!-- Error Message -->
             <div>
               <p>
-                <span class="text-[#f97583]">error</span><span
-                  class="text-[#6e7681]"
-                >:</span>
-                <span class="neon-text-subtle">
+                <span class="bg-[#f97583] px-1.5 text-xs font-bold text-white">ERROR</span>
+                <span class="neon-text-subtle ml-2">
                   {{ error?.statusMessage || (statusCode === 404 ? 'page not found' : 'something went wrong') }}
                 </span>
               </p>
