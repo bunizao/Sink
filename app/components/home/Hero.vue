@@ -104,6 +104,7 @@ onMounted(() => {
   window.addEventListener('keydown', trackModifierKey)
   window.addEventListener('keyup', trackModifierKey)
   window.addEventListener('blur', resetModifierKey)
+  void detectDashboardAccess()
 
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   if (!prefersReducedMotion) {
@@ -146,6 +147,51 @@ const commandInput = ref('')
 const commandHistory = ref<CommandEntry[]>([])
 const inputRef = ref<HTMLInputElement | null>(null)
 const isFocused = ref(false)
+const { getToken, removeToken } = useAuthToken()
+const dashboardAccessState = ref<'checking' | 'granted' | 'denied'>('checking')
+let dashboardAccessTask: Promise<boolean> | null = null
+
+async function verifyDashboardAccess(authorization?: string) {
+  try {
+    await $fetch('/api/verify', {
+      headers: authorization ? { Authorization: authorization } : {},
+    })
+    return true
+  }
+  catch {
+    return false
+  }
+}
+
+async function detectDashboardAccess() {
+  if (dashboardAccessTask)
+    return dashboardAccessTask
+
+  dashboardAccessTask = (async () => {
+    const token = getToken()?.trim()
+
+    if (token) {
+      const hasValidToken = await verifyDashboardAccess(`Bearer ${token}`)
+      if (hasValidToken) {
+        dashboardAccessState.value = 'granted'
+        return true
+      }
+
+      removeToken()
+    }
+
+    const canAccessWithoutToken = await verifyDashboardAccess()
+    dashboardAccessState.value = canAccessWithoutToken ? 'granted' : 'denied'
+    return canAccessWithoutToken
+  })()
+
+  try {
+    return await dashboardAccessTask
+  }
+  finally {
+    dashboardAccessTask = null
+  }
+}
 
 function handleSinkRepoClick(event: MouseEvent) {
   // Keep terminal-like behavior on desktop: require modifier click to follow links.
@@ -260,6 +306,12 @@ async function handleCommand() {
   let isError = true
 
   if (cmd === 'cd /dashboard' || cmd === 'cd /dashboard/') {
+    const hasDashboardAccess = await detectDashboardAccess()
+    if (hasDashboardAccess) {
+      navigateTo('/dashboard')
+      return
+    }
+
     output = 'bash: cd: /dashboard: Permission denied'
   }
   else if (cmd === 'open github') {
@@ -275,7 +327,7 @@ async function handleCommand() {
     isError = false
   }
   else if (cmd === 'help') {
-    output = 'try: sink <url> [slug], sudo, open github, cat, clear'
+    output = 'try: sink <url> [slug], cd /dashboard, sudo, open github, cat, clear'
     isError = false
   }
   else {
@@ -395,12 +447,27 @@ async function handleCommand() {
           <span class="text-[#3fb950]">$</span> open github
         </a>
 
-        <!-- Static: cd /dashboard → Permission denied -->
+        <!-- Static: cd /dashboard access status -->
         <div>
-          <p>
+          <NuxtLink
+            to="/dashboard"
+            class="
+              block text-[#d4d4d4] transition-colors
+              hover:text-[#58a6ff]
+            "
+          >
             <span class="text-[#3fb950]">$</span> cd /dashboard
+          </NuxtLink>
+          <p
+            v-if="dashboardAccessState === 'checking'"
+            class="text-[#6e7681]"
+          >
+            checking dashboard access...
           </p>
-          <p class="text-[#f85149]">
+          <p
+            v-else-if="dashboardAccessState === 'denied'"
+            class="text-[#f85149]"
+          >
             bash: cd: /dashboard: Permission denied
           </p>
         </div>
