@@ -128,6 +128,18 @@ interface CommandEntry {
   command: string
   output?: string
   isError?: boolean
+  isLoading?: boolean
+}
+
+const copiedId = ref<number | null>(null)
+
+function copyToClipboard(entry: CommandEntry) {
+  navigator.clipboard.writeText(entry.output!)
+  copiedId.value = entry.id
+  setTimeout(() => {
+    if (copiedId.value === entry.id)
+      copiedId.value = null
+  }, 2000)
 }
 
 const commandInput = ref('')
@@ -171,10 +183,6 @@ function isValidUrl(str: string): boolean {
   }
 }
 
-function copyToClipboard(text: string) {
-  navigator.clipboard.writeText(text)
-}
-
 async function handleSinkCommand(raw: string) {
   const parts = raw.split(/\s+/)
   // parts[0] = 'sink', parts[1] = url, parts[2] = optional slug
@@ -192,7 +200,7 @@ async function handleSinkCommand(raw: string) {
   }
 
   const entryId = Date.now()
-  pushEntry({ id: entryId, command: raw, output: 'creating...', isError: false })
+  pushEntry({ id: entryId, command: raw, output: 'creating', isError: false, isLoading: true })
   isProcessing.value = true
 
   try {
@@ -209,6 +217,7 @@ async function handleSinkCommand(raw: string) {
     if (entry) {
       entry.output = shortLink
       entry.isError = false
+      entry.isLoading = false
     }
   }
   catch (error: unknown) {
@@ -219,6 +228,7 @@ async function handleSinkCommand(raw: string) {
         : 'failed to create link'
       entry.output = `sink: ${msg}`
       entry.isError = true
+      entry.isLoading = false
     }
   }
   finally {
@@ -401,7 +411,16 @@ async function handleCommand() {
             <span class="text-[#3fb950]">tuu@cat:~$</span> {{ entry.command }}
           </p>
           <p
-            v-if="entry.output && entry.isError"
+            v-if="entry.isLoading"
+            class="text-[#6e7681]"
+          >
+            <span class="creating-cli">
+              <span>{{ entry.output }}</span>
+              <span class="cli-spinner" aria-hidden="true" />
+            </span>
+          </p>
+          <p
+            v-else-if="entry.output && entry.isError"
             class="text-[#f85149]"
           >
             {{ entry.output }}
@@ -420,14 +439,15 @@ async function handleCommand() {
               "
             >{{ entry.output }}</a>
             <button
-              class="
-                ml-2 text-[#8b949e] transition-colors
+              class="ml-2 transition-colors"
+              :class="copiedId === entry.id ? 'text-[#3fb950]' : `
+                text-[#8b949e]
                 hover:text-[#d4d4d4]
-              "
+              `"
               aria-label="Copy short link"
-              @click.stop="copyToClipboard(entry.output!)"
+              @click.stop="copyToClipboard(entry)"
             >
-              [copy]
+              [{{ copiedId === entry.id ? 'copied' : 'copy' }}]
             </button>
           </p>
           <p
@@ -542,11 +562,49 @@ async function handleCommand() {
     0 0 14px rgba(240, 160, 48, 0.25);
 }
 
+.creating-cli {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.cli-spinner {
+  display: inline-block;
+  width: 1ch;
+}
+
+.cli-spinner::before {
+  content: '|';
+  animation: cli-spinner 720ms steps(1, end) infinite;
+}
+
+@keyframes cli-spinner {
+  0% {
+    content: '|';
+  }
+  25% {
+    content: '/';
+  }
+  50% {
+    content: '-';
+  }
+  75% {
+    content: '\\';
+  }
+  100% {
+    content: '|';
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .terminal {
     animation: none;
   }
   .cursor-block {
+    animation: none;
+  }
+  .cli-spinner::before {
+    content: '|';
     animation: none;
   }
 }
