@@ -130,6 +130,7 @@ interface CommandEntry {
   output?: string
   isError?: boolean
   isLoading?: boolean
+  duplicateSlug?: string
 }
 
 const copiedId = ref<number | null>(null)
@@ -229,6 +230,60 @@ function isValidUrl(str: string): boolean {
   }
 }
 
+interface SinkCreateError {
+  status?: number
+  statusText?: string
+  message?: string
+  data?: {
+    statusMessage?: string
+    message?: string
+  }
+}
+
+interface SinkCreateErrorResult {
+  message: string
+  duplicateSlug?: string
+}
+
+function normalizeFetchMessage(message: string) {
+  return message
+    .replace(/^\[[A-Z]+\]\s+"[^"]+":\s*/, '')
+    .trim()
+}
+
+function formatSinkCreateError(error: unknown, slug?: string): SinkCreateErrorResult {
+  if (!error || typeof error !== 'object')
+    return { message: 'failed to create link' }
+
+  const { status, statusText, message, data } = error as SinkCreateError
+
+  if (status === 409) {
+    if (slug) {
+      return {
+        message: 'slug already exists:',
+        duplicateSlug: slug,
+      }
+    }
+
+    return { message: 'slug already exists' }
+  }
+
+  const candidates = [
+    statusText,
+    data?.statusMessage,
+    data?.message,
+    message ? normalizeFetchMessage(message) : undefined,
+  ]
+
+  for (const candidate of candidates) {
+    const value = candidate?.trim()
+    if (value)
+      return { message: value }
+  }
+
+  return { message: 'failed to create link' }
+}
+
 async function handleSinkCommand(raw: string) {
   const parts = raw.split(/\s+/)
   // parts[0] = 'sink', parts[1] = url, parts[2] = optional slug
@@ -269,10 +324,9 @@ async function handleSinkCommand(raw: string) {
   catch (error: unknown) {
     const entry = commandHistory.value.find(e => e.id === entryId)
     if (entry) {
-      const msg = error && typeof error === 'object' && 'statusText' in error
-        ? String((error as { statusText: string }).statusText)
-        : 'failed to create link'
-      entry.output = `sink: ${msg}`
+      const errorResult = formatSinkCreateError(error, slug)
+      entry.output = `sink: ${errorResult.message}`
+      entry.duplicateSlug = errorResult.duplicateSlug
       entry.isError = true
       entry.isLoading = false
     }
@@ -489,7 +543,13 @@ async function handleCommand() {
             v-else-if="entry.output && entry.isError"
             class="text-[#f85149]"
           >
-            {{ entry.output }}
+            <template v-if="entry.duplicateSlug">
+              <span>{{ entry.output }}</span>
+              <span class="ml-1 text-[#e3b341]">{{ entry.duplicateSlug }}</span>
+            </template>
+            <template v-else>
+              {{ entry.output }}
+            </template>
           </p>
           <p
             v-else-if="entry.output && entry.output.startsWith('http')"
