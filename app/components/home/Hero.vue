@@ -479,11 +479,10 @@ async function handleCommand() {
           </p>
           <p
             v-if="entry.isLoading"
-            class="text-[#6e7681]"
           >
             <span class="creating-cli">
-              <span>{{ entry.output }}</span>
               <span class="cli-spinner" aria-hidden="true" />
+              <span class="creating-text">{{ entry.output }}</span>
             </span>
           </p>
           <p
@@ -632,34 +631,65 @@ async function handleCommand() {
 .creating-cli {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
 }
 
 .cli-spinner {
   display: inline-block;
   width: 1ch;
+  color: #da7756;
 }
 
 .cli-spinner::before {
-  content: '|';
-  animation: cli-spinner 720ms steps(1, end) infinite;
+  content: '⠋';
+  animation: cli-spinner 800ms steps(1, end) infinite;
+}
+
+.creating-text {
+  color: #da7756;
+  animation: creating-pulse 2s ease-in-out infinite;
 }
 
 @keyframes cli-spinner {
   0% {
-    content: '|';
+    content: '⠋';
   }
-  25% {
-    content: '/';
+  10% {
+    content: '⠙';
+  }
+  20% {
+    content: '⠹';
+  }
+  30% {
+    content: '⠸';
+  }
+  40% {
+    content: '⠼';
   }
   50% {
-    content: '-';
+    content: '⠴';
   }
-  75% {
-    content: '\\';
+  60% {
+    content: '⠦';
   }
+  70% {
+    content: '⠧';
+  }
+  80% {
+    content: '⠇';
+  }
+  90% {
+    content: '⠏';
+  }
+}
+
+@keyframes creating-pulse {
+  0%,
   100% {
-    content: '|';
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
   }
 }
 
@@ -671,7 +701,10 @@ async function handleCommand() {
     animation: none;
   }
   .cli-spinner::before {
-    content: '|';
+    content: '⠋';
+    animation: none;
+  }
+  .creating-text {
     animation: none;
   }
 }
