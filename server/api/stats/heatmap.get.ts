@@ -12,7 +12,7 @@ const HeatmapQuerySchema = QuerySchema.extend({
 })
 
 function query2sql(query: z.infer<typeof HeatmapQuerySchema>, event: H3Event): string {
-  const filter = query2filter(query)
+  const filter = query2accessFilter(query)
   const { dataset } = useRuntimeConfig(event)
   const timezone = getSafeTimezone(query.clientTimezone)
   const tzTimestamp = `toDateTime(toUnixTimestamp(timestamp), '${timezone}')`

@@ -2,7 +2,7 @@ import type { Query } from '#shared/schemas/query'
 import type { SelectStatement } from 'sql-bricks'
 import type { BlobsKey } from './access-log'
 
-const { in: $in, and } = SqlBricks
+const { in: $in, and, eq, or } = SqlBricks
 
 export type { Query }
 
@@ -21,6 +21,17 @@ export function query2filter(query: Query) {
   }
 
   return filter.length ? and(...filter) : []
+}
+
+export function query2accessFilter(query: Query) {
+  const baseFilter = query2filter(query)
+  const eventTypeColumn = blobsMap.blob17
+  const accessEventFilter = or(eq(eventTypeColumn, 'access'), eq(eventTypeColumn, ''))
+
+  if (Array.isArray(baseFilter) && baseFilter.length === 0)
+    return accessEventFilter
+
+  return and(baseFilter, accessEventFilter)
 }
 
 export function appendTimeFilter(sql: SelectStatement, query: Query): SelectStatement {

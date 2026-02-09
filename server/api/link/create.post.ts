@@ -57,6 +57,16 @@ export default eventHandler(async (event) => {
   }
 
   await putLink(event, link)
+  try {
+    await useCreateLog(event, {
+      id: link.id,
+      slug: link.slug,
+      url: link.url,
+    })
+  }
+  catch (error) {
+    console.error('Failed write create log:', error)
+  }
   setResponseStatus(event, 201)
   const shortLink = buildShortLink(event, link.slug)
   return { link, shortLink }
