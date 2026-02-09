@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { Link } from '@/types'
 import { Command, MousePointer2 } from 'lucide-vue-next'
 
 const { description, github } = useAppConfig()
@@ -151,16 +152,97 @@ function focusInput() {
   inputRef.value?.focus()
 }
 
-function handleCommand() {
+function pushEntry(entry: CommandEntry) {
+  commandHistory.value.push(entry)
+  // Keep only last 5 entries to prevent overflow
+  if (commandHistory.value.length > 5) {
+    commandHistory.value = commandHistory.value.slice(-5)
+  }
+}
+
+const isProcessing = ref(false)
+
+function isValidUrl(str: string): boolean {
+  try {
+    return Boolean(new URL(str))
+  }
+  catch {
+    return false
+  }
+}
+
+function copyToClipboard(text: string) {
+  navigator.clipboard.writeText(text)
+}
+
+async function handleSinkCommand(raw: string) {
+  const parts = raw.split(/\s+/)
+  // parts[0] = 'sink', parts[1] = url, parts[2] = optional slug
+  const url = parts[1]
+  const slug = parts[2]
+
+  if (!url) {
+    pushEntry({ id: Date.now(), command: raw, output: 'usage: sink <url> [slug]', isError: true })
+    return
+  }
+
+  if (!isValidUrl(url)) {
+    pushEntry({ id: Date.now(), command: raw, output: `sink: invalid URL: ${url}`, isError: true })
+    return
+  }
+
+  const entryId = Date.now()
+  pushEntry({ id: entryId, command: raw, output: 'creating...', isError: false })
+  isProcessing.value = true
+
+  try {
+    const body: Record<string, string> = { url }
+    if (slug)
+      body.slug = slug
+
+    const { shortLink } = await useAPI<{ link: Link, shortLink: string }>(
+      '/api/link/create',
+      { method: 'POST', body },
+    )
+
+    const entry = commandHistory.value.find(e => e.id === entryId)
+    if (entry) {
+      entry.output = shortLink
+      entry.isError = false
+    }
+  }
+  catch (error: unknown) {
+    const entry = commandHistory.value.find(e => e.id === entryId)
+    if (entry) {
+      const msg = error && typeof error === 'object' && 'statusText' in error
+        ? String((error as { statusText: string }).statusText)
+        : 'failed to create link'
+      entry.output = `sink: ${msg}`
+      entry.isError = true
+    }
+  }
+  finally {
+    isProcessing.value = false
+  }
+}
+
+async function handleCommand() {
   const raw = commandInput.value.trim()
   if (!raw)
     return
 
   const cmd = raw.toLowerCase()
+  commandInput.value = ''
 
   // sudo → grant access to dashboard
   if (cmd.startsWith('sudo')) {
     navigateTo('/dashboard')
+    return
+  }
+
+  // sink <url> [slug] → create short link
+  if (cmd.startsWith('sink ') || cmd === 'sink') {
+    await handleSinkCommand(raw)
     return
   }
 
@@ -176,7 +258,6 @@ function handleCommand() {
   }
   else if (cmd === 'clear') {
     commandHistory.value = []
-    commandInput.value = ''
     return
   }
   else if (cmd === 'cat') {
@@ -184,26 +265,14 @@ function handleCommand() {
     isError = false
   }
   else if (cmd === 'help') {
-    output = 'try: sudo, cd /dashboard, open github, cat, clear'
+    output = 'try: sink <url> [slug], sudo, open github, cat, clear'
     isError = false
   }
   else {
     output = `bash: ${raw.split(' ')[0]}: command not found`
   }
 
-  commandHistory.value.push({
-    id: Date.now(),
-    command: raw,
-    output,
-    isError,
-  })
-
-  // Keep only last 3 entries to prevent overflow
-  if (commandHistory.value.length > 3) {
-    commandHistory.value = commandHistory.value.slice(-3)
-  }
-
-  commandInput.value = ''
+  pushEntry({ id: Date.now(), command: raw, output, isError })
 }
 </script>
 
@@ -332,9 +401,38 @@ function handleCommand() {
             <span class="text-[#3fb950]">tuu@cat:~$</span> {{ entry.command }}
           </p>
           <p
-            v-if="entry.output" :class="entry.isError ? 'text-[#f85149]' : `
-              text-[#6e7681]
-            `"
+            v-if="entry.output && entry.isError"
+            class="text-[#f85149]"
+          >
+            {{ entry.output }}
+          </p>
+          <p
+            v-else-if="entry.output && entry.output.startsWith('http')"
+            class="text-[#58a6ff]"
+          >
+            <a
+              :href="entry.output"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="
+                underline decoration-dotted underline-offset-2
+                hover:decoration-solid
+              "
+            >{{ entry.output }}</a>
+            <button
+              class="
+                ml-2 text-[#8b949e] transition-colors
+                hover:text-[#d4d4d4]
+              "
+              aria-label="Copy short link"
+              @click.stop="copyToClipboard(entry.output!)"
+            >
+              [copy]
+            </button>
+          </p>
+          <p
+            v-else-if="entry.output"
+            class="text-[#6e7681]"
           >
             {{ entry.output }}
           </p>
@@ -347,8 +445,10 @@ function handleCommand() {
             <input
               ref="inputRef"
               v-model="commandInput"
+              :disabled="isProcessing"
               class="
                 terminal-input w-full bg-transparent text-[#d4d4d4] outline-none
+                disabled:opacity-50
               "
               type="text"
               autocomplete="off"
