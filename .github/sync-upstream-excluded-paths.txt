@@ -1,0 +1,6 @@
+wrangler.jsonc
+app/assets/css/tailwind.css
+app/components/home/Hero.vue
+app/error.vue
+app/layouts/home.vue
+app/pages/index.vue

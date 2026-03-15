@@ -1,6 +1,8 @@
 name: Sync Upstream
 
 on:
+  schedule:
+    - cron: '0 2 * * *'
   workflow_dispatch:
     inputs:
       upstream_repo:
@@ -27,6 +29,17 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
 
       - name: Resolve upstream
         id: resolve
@@ -67,56 +80,34 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-      - name: Sync upstream changes
+      - name: Prepare upstream merge
+        id: sync
         env:
           UPSTREAM_REPO: ${{ steps.resolve.outputs.repo }}
           UPSTREAM_BRANCH: ${{ steps.resolve.outputs.branch }}
+        run: node scripts/sync-upstream.mjs
+
+      - name: Install dependencies
+        if: steps.sync.outputs.has_changes == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify excluded overrides
+        if: steps.sync.outputs.has_changes == 'true'
+        run: pnpm test:sync-upstream
+
+      - name: Run typecheck
+        if: steps.sync.outputs.has_changes == 'true'
+        run: pnpm types:check
+
+      - name: Build application
+        if: steps.sync.outputs.has_changes == 'true'
+        run: pnpm build
+
+      - name: Commit sync merge
+        if: steps.sync.outputs.has_changes == 'true'
         run: |
-          set -euo pipefail
-
-          current_branch="${GITHUB_REF_NAME}"
-          pre_sync_sha="$(git rev-parse HEAD)"
-
-          git remote remove upstream 2>/dev/null || true
-          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
-          git fetch upstream "${UPSTREAM_BRANCH}"
-
-          if ! git merge --no-edit "upstream/${UPSTREAM_BRANCH}"; then
-            git merge --abort || true
-            echo 'Sync failed due to merge conflicts.'
-            exit 1
-          fi
-
-          excluded_paths=(
-            'wrangler.jsonc'
-            'app/assets/css/tailwind.css'
-            'app/components/home/Hero.vue'
-            'app/error.vue'
-            'app/layouts/home.vue'
-            'app/pages/index.vue'
-          )
-
-          for path in "${excluded_paths[@]}"; do
-            if git cat-file -e "${pre_sync_sha}:${path}" 2>/dev/null; then
-              git checkout "${pre_sync_sha}" -- "${path}"
-            else
-              rm -rf -- "${path}"
-            fi
-          done
-
-          post_merge_sha="$(git rev-parse HEAD)"
-
-          if git diff --quiet && git diff --cached --quiet; then
-            if [ "${post_merge_sha}" = "${pre_sync_sha}" ]; then
-              echo 'No changes to sync.'
-              exit 0
-            fi
-
-            echo 'Merged upstream changes, pushing...'
-            git push origin "${current_branch}"
-            exit 0
-          fi
-
-          git add -A
           git commit -m 'chore: sync upstream (exclude local overrides)'
-          git push origin "${current_branch}"
+
+      - name: Push sync commit
+        if: steps.sync.outputs.has_changes == 'true'
+        run: git push origin "${{ steps.sync.outputs.current_branch }}"

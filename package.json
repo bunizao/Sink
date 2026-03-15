@@ -11,6 +11,7 @@
     "dev": "nuxt dev --port 7465",
     "analyze": "nuxt analyze",
     "test": "vitest",
+    "test:sync-upstream": "vitest run --config vitest.sync.config.ts",
     "build": "NODE_OPTIONS=--max-old-space-size=8192 nuxt build",
     "build:map": "node scripts/build-map.js",
     "build:sphere": "node scripts/build-sphere.js",
