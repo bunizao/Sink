@@ -46,6 +46,8 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            core.setOutput('should_run', 'false')
+
             const inputRepo = '${{ github.event.inputs.upstream_repo || '' }}'.trim()
             const inputBranch = '${{ github.event.inputs.upstream_branch || '' }}'.trim()
             const varRepo = '${{ vars.UPSTREAM_REPO || '' }}'.trim()
@@ -68,20 +70,23 @@ jobs:
             }
 
             if (!repo) {
-              core.setFailed('Cannot resolve upstream repository. Set vars.UPSTREAM_REPO or pass workflow_dispatch input upstream_repo.')
+              core.notice('No upstream repository configured or detected. Skipping sync.')
               return
             }
 
+            core.setOutput('should_run', 'true')
             core.setOutput('repo', repo)
             core.setOutput('branch', branch)
 
       - name: Configure Git
+        if: steps.resolve.outputs.should_run == 'true'
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
       - name: Prepare upstream merge
         id: sync
+        if: steps.resolve.outputs.should_run == 'true'
         env:
           UPSTREAM_REPO: ${{ steps.resolve.outputs.repo }}
           UPSTREAM_BRANCH: ${{ steps.resolve.outputs.branch }}
