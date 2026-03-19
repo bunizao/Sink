@@ -17,21 +17,12 @@ jobs:
           fetch-depth: 1
 
       - name: Set up Bun
-        if: ${{ secrets.OPENCODE_API_KEY != '' && secrets.OPENCODE_MODEL != '' }}
         uses: oven-sh/setup-bun@v2
 
-      - name: Install opencode
-        if: ${{ secrets.OPENCODE_API_KEY != '' && secrets.OPENCODE_MODEL != '' }}
-        run: curl -fsSL https://opencode.ai/install | bash
-
-      - name: Skip when OpenCode secrets are missing
-        if: ${{ secrets.OPENCODE_API_KEY == '' || secrets.OPENCODE_MODEL == '' }}
-        run: echo 'OpenCode secrets are not configured. Skipping issue assistant.'
-
       - name: Analyze issue
-        if: ${{ secrets.OPENCODE_API_KEY != '' && secrets.OPENCODE_MODEL != '' }}
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_MODEL: ${{ secrets.OPENCODE_MODEL }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENCODE_PERMISSION: |
             {
@@ -42,7 +33,14 @@ jobs:
               "webfetch": "deny"
             }
         run: |
-          opencode run -m ${{ secrets.OPENCODE_MODEL }} "A new issue #${{ github.event.issue.number }} has been created. Lookup this issue, then do the following:
+          if [ -z "$OPENCODE_API_KEY" ] || [ -z "$OPENCODE_MODEL" ]; then
+            echo 'OpenCode secrets are not configured. Skipping issue assistant.'
+            exit 0
+          fi
+
+          curl -fsSL https://opencode.ai/install | bash
+
+          opencode run -m "$OPENCODE_MODEL" "A new issue #${{ github.event.issue.number }} has been created. Lookup this issue, then do the following:
 
           1. Read README.md and all files under docs/ directory to see if any documentation answers the issue.
           2. Search existing issues (excluding #${{ github.event.issue.number }}) for potential duplicates by similarity in title, description, error messages, or functionality.
