@@ -4,3 +4,7 @@ app/components/home/Hero.vue
 app/error.vue
 app/layouts/home.vue
 app/pages/index.vue
+public/apple-touch-icon.png
+public/favicon.ico
+public/icon-192.png
+public/icon.png
