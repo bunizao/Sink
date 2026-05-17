@@ -25,7 +25,7 @@ export function query2filter(query: Query) {
 
 export function query2accessFilter(query: Query) {
   const baseFilter = query2filter(query)
-  const eventTypeColumn = blobsMap.blob17
+  const eventTypeColumn = logsMap.eventType!
   const accessEventFilter = or(eq(eventTypeColumn, 'access'), eq(eventTypeColumn, ''))
 
   if (Array.isArray(baseFilter) && baseFilter.length === 0)
