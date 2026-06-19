@@ -4,5 +4,6 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/sync-upstream.spec.ts'],
+    testTimeout: 15000,
   },
 })

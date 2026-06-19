@@ -1,4 +1,6 @@
 wrangler.jsonc
+.github/workflows/issue-assistant.yml
+.github/workflows/sync-upstream.yml
 app/assets/css/tailwind.css
 app/components/home/Hero.vue
 app/error.vue
