@@ -30,6 +30,15 @@
       "id": "9d3df64222b847ca8c7bda1768935e89" // IMPORTANT: Change this to your KV namespace ID
     }
   ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sink",
+      // Local placeholder; deploy:config requires DEPLOY_D1_DATABASE_ID.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "drizzle"
+    }
+  ],
   "r2_buckets": [
     {
       "binding": "R2",

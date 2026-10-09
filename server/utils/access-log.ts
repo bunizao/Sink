@@ -12,7 +12,7 @@ import {
   Vehicles,
 } from 'ua-parser-js/extensions'
 import { parseURL } from 'ufo'
-import { getFlag } from '@/utils/flag'
+import { getFlag } from '#shared/utils/flag'
 
 function toBlobNumber(blob: string) {
   return +blob.replace(/\D/g, '')
@@ -56,6 +56,21 @@ export type LogsMap = {
   [key in DoublesMap[DoublesKey]]?: number | undefined
 }
 
+export interface WebhookClickContext {
+  country: string
+  region: string
+  city: string
+  device: string
+  browser: string
+  os: string
+  referer: string
+}
+
+export interface AccessLogResult {
+  logs: LogsMap
+  click: WebhookClickContext
+}
+
 export const logsMap = Object.fromEntries([
   ...Object.entries(blobsMap).map(([k, v]) => [v, k]),
   ...Object.entries(doublesMap).map(([k, v]) => [v, k]),
@@ -93,25 +108,22 @@ export function doubles2logs(doubles: number[]) {
   }, {} as Partial<LogsMap>)
 }
 
-type LogEventType = 'access' | 'create'
-
-interface LogLinkContext {
-  id?: string
-  slug?: string
-  url?: string
+function getCountryName(country?: string): string {
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'region' }).of(country || 'WD') || 'Worldwide'
+  }
+  catch {
+    return 'Worldwide'
+  }
 }
 
-interface RequestLogContext {
-  cf: IncomingRequestCfProperties | undefined
-  ip: string | undefined
-  language: string | undefined
-  referer: string | undefined
-  uaInfo: ReturnType<UAParser['getResult']>
-  userAgent: string
-}
-
-function getRequestLogContext(event: H3Event): RequestLogContext {
+export function collectAccessLog(
+  event: H3Event,
+  link: { id?: string, slug?: string, url?: string } = event.context.link || {},
+  eventType: 'access' | 'create' = 'access',
+): AccessLogResult | undefined {
   const ip = getHeader(event, 'cf-connecting-ip') || getHeader(event, 'x-real-ip') || getRequestIP(event, { xForwardedFor: true })
+
   const { host: referer } = parseURL(getHeader(event, 'referer'))
 
   const acceptLanguage = getHeader(event, 'accept-language') || ''
@@ -129,90 +141,81 @@ function getRequestLogContext(event: H3Event): RequestLogContext {
 
   const { cloudflare } = event.context
   const { request: { cf } } = cloudflare
+  const isBot = cf?.botManagement?.verifiedBot
+    || ['crawler', 'fetcher'].includes(uaInfo?.browser?.type || '')
+    || ['spider', 'bot'].includes(uaInfo?.browser?.name?.toLowerCase() || '')
 
-  return {
-    cf,
-    ip,
-    language,
-    referer,
-    uaInfo,
-    userAgent,
+  const { disableBotAccessLog } = useRuntimeConfig(event)
+  if (eventType === 'access' && isBot && disableBotAccessLog) {
+    console.log('bot access log disabled:', userAgent)
+    return
   }
-}
 
-function createRequestLogs(event: H3Event, link: LogLinkContext, request: RequestLogContext, eventType: LogEventType): LogsMap {
-  const regionNames = new Intl.DisplayNames(['en'], { type: 'region' })
-  const countryName = regionNames.of(request.cf?.country || 'WD') // fallback to "Worldwide"
-
-  return {
+  const countryName = getCountryName(cf?.country)
+  const logs = {
     url: link.url,
     slug: link.slug,
-    ua: request.userAgent,
-    ip: request.ip,
-    referer: request.referer,
-    country: request.cf?.country,
-    region: `${getFlag(request.cf?.country)} ${[request.cf?.region, countryName].filter(Boolean).join(',')}`,
-    city: `${getFlag(request.cf?.country)} ${[request.cf?.city, countryName].filter(Boolean).join(',')}`,
-    timezone: request.cf?.timezone,
-    language: request.language,
-    os: request.uaInfo?.os?.name,
-    browser: request.uaInfo?.browser?.name,
-    browserType: request.uaInfo?.browser?.type,
-    device: request.uaInfo?.device?.model,
-    deviceType: request.uaInfo?.device?.type,
-    COLO: request.cf?.colo,
+    ua: userAgent,
+    ip,
+    referer,
+    country: cf?.country,
+    region: `${getFlag(cf?.country)} ${[cf?.region, countryName].filter(Boolean).join(',')}`,
+    city: `${getFlag(cf?.country)} ${[cf?.city, countryName].filter(Boolean).join(',')}`,
+    timezone: cf?.timezone,
+    language,
+    os: uaInfo?.os?.name,
+    browser: uaInfo?.browser?.name,
+    browserType: uaInfo?.browser?.type,
+    device: uaInfo?.device?.model,
+    deviceType: uaInfo?.device?.type,
+    COLO: cf?.colo,
     eventType,
 
     // For RealTime Globe
-    latitude: Number(request.cf?.latitude || getHeader(event, 'cf-iplatitude') || 0),
-    longitude: Number(request.cf?.longitude || getHeader(event, 'cf-iplongitude') || 0),
+    latitude: Number(cf?.latitude || getHeader(event, 'cf-iplatitude') || 0),
+    longitude: Number(cf?.longitude || getHeader(event, 'cf-iplongitude') || 0),
+  }
+
+  return {
+    logs,
+    click: {
+      country: cf?.country || '',
+      region: cf?.region || '',
+      city: cf?.city || '',
+      device: uaInfo?.device?.type || uaInfo?.device?.model || '',
+      browser: uaInfo?.browser?.name || '',
+      os: uaInfo?.os?.name || '',
+      referer: referer || '',
+    },
   }
 }
 
-export function useAccessLog(event: H3Event) {
-  const requestLogContext = getRequestLogContext(event)
+export function writeAccessLog(event: H3Event, accessLogs: LogsMap, linkId = event.context.link?.id): void {
   const { cloudflare } = event.context
-  const { env } = cloudflare
-  const link = event.context.link || {}
-
-  const isBot = requestLogContext.cf?.botManagement?.verifiedBot
-    || ['crawler', 'fetcher'].includes(requestLogContext.uaInfo?.browser?.type || '')
-    || ['spider', 'bot'].includes(requestLogContext.uaInfo?.browser?.name?.toLowerCase() || '')
-
-  const { disableBotAccessLog } = useRuntimeConfig(event)
-  if (isBot && disableBotAccessLog) {
-    console.log('bot access log disabled:', requestLogContext.userAgent)
-    return Promise.resolve()
-  }
-
-  const accessLogs = createRequestLogs(event, link, requestLogContext, 'access')
 
   if (process.env.NODE_ENV === 'production') {
-    return env.ANALYTICS.writeDataPoint({
-      indexes: [link.id], // only one index
+    const analytics = cloudflare.env.ANALYTICS
+    if (!analytics)
+      return
+
+    analytics.writeDataPoint({
+      indexes: [linkId], // only one index
       blobs: logs2blobs(accessLogs),
       doubles: logs2doubles(accessLogs),
     })
+    return
   }
 
-  console.log('access logs:', accessLogs, logs2blobs(accessLogs), logs2doubles(accessLogs), { ...blobs2logs(logs2blobs(accessLogs)), ...doubles2logs(logs2doubles(accessLogs)) })
-  return Promise.resolve()
+  console.log('access logs:', accessLogs)
 }
 
-export function useCreateLog(event: H3Event, link: Required<LogLinkContext>) {
-  const requestLogContext = getRequestLogContext(event)
-  const { cloudflare } = event.context
-  const { env } = cloudflare
-  const createLogs = createRequestLogs(event, link, requestLogContext, 'create')
-
-  if (process.env.NODE_ENV === 'production') {
-    return env.ANALYTICS.writeDataPoint({
-      indexes: [link.id],
-      blobs: logs2blobs(createLogs),
-      doubles: logs2doubles(createLogs),
-    })
+export function useCreateLog(event: H3Event, link: { id: string, slug: string, url: string }): void {
+  try {
+    const result = collectAccessLog(event, link, 'create')
+    if (result)
+      writeAccessLog(event, result.logs, link.id)
   }
-
-  console.log('create logs:', createLogs, logs2blobs(createLogs), logs2doubles(createLogs), { ...blobs2logs(logs2blobs(createLogs)), ...doubles2logs(logs2doubles(createLogs)) })
-  return Promise.resolve()
+  catch (error) {
+    console.error('Failed to write create log:', error)
+  }
 }

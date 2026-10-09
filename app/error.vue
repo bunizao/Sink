@@ -114,13 +114,12 @@ function handleBack() {
       <section class="mx-auto w-full max-w-2xl">
         <!-- Terminal Window -->
         <div
-          class="terminal overflow-hidden rounded-xl border border-white/[0.06]"
+          class="terminal overflow-hidden rounded-xl border border-white/6"
         >
           <!-- macOS Title Bar -->
           <div
             class="
-              flex items-center border-b border-white/[0.06] bg-[#1e1e1e] px-4
-              py-3
+              flex items-center border-b border-white/6 bg-[#1e1e1e] px-4 py-3
             "
           >
             <div class="flex gap-2">
@@ -151,7 +150,7 @@ function handleBack() {
             <div class="neon-container overflow-x-auto" :class="flickerClass">
               <pre
                 class="
-                  neon-text text-xs leading-snug
+                  neon-text text-xs/snug
                   md:text-[13px]
                 "
                 :aria-label="`ASCII art showing error ${statusCode}`"
@@ -208,7 +207,7 @@ function handleBack() {
           <!-- Terminal Footer -->
           <div
             class="
-              border-t border-white/[0.04] bg-[#0c0c0c] px-5 py-2 text-[11px]
+              border-t border-white/4 bg-[#0c0c0c] px-5 py-2 text-[11px]
               text-white/15
               md:px-8
             "

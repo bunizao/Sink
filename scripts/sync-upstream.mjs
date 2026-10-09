@@ -86,8 +86,12 @@ function main() {
   const preSyncSha = runGit(['rev-parse', 'HEAD'], { cwd }).stdout.trim()
   const currentBranch = process.env.SYNC_CURRENT_BRANCH || runGit(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd }).stdout.trim()
 
-  runGit(['remote', 'remove', upstreamRemoteName], { cwd, allowFailure: true })
-  runGit(['remote', 'add', upstreamRemoteName, upstreamRemoteUrl], { cwd })
+  const existingRemote = runGit(['remote', 'get-url', upstreamRemoteName], { cwd, allowFailure: true })
+  if (existingRemote.status === 0)
+    runGit(['remote', 'set-url', upstreamRemoteName, upstreamRemoteUrl], { cwd })
+  else
+    runGit(['remote', 'add', upstreamRemoteName, upstreamRemoteUrl], { cwd })
+  runGit(['remote', 'set-url', '--push', upstreamRemoteName, 'DISABLED'], { cwd })
   runGit(['fetch', upstreamRemoteName, upstreamBranch], { cwd, stdio: 'inherit' })
 
   const pendingCommits = runGit(

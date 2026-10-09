@@ -99,6 +99,7 @@ describe('sync-upstream script', () => {
     })
 
     expect(result.status).toBe(0)
+    expect(run('git', ['remote', 'get-url', '--push', 'upstream'], currentDir)).toBe('DISABLED')
     expect(readFileSync(join(currentDir, 'app/error.vue'), 'utf8')).toBe('<template>local-error</template>\n')
     expect(readFileSync(join(currentDir, 'app/pages/index.vue'), 'utf8')).toBe('<template>local-home</template>\n')
     expect(readFileSync(join(currentDir, 'server/api/new.ts'), 'utf8')).toBe('export const added = true\n')

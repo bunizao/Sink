@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { Link } from '@/types'
-import { Command, MousePointer2 } from 'lucide-vue-next'
+import { Command, MousePointer2 } from '@lucide/vue'
+import { getAuthToken, removeAuthToken } from '@/utils/auth-token'
 
 const { description, github } = useAppConfig()
-const { stats } = useGithubStats()
+const { rawStats: stats } = useGithubStats()
 
 // Cat batting ball animation frames (7 frames, 5 lines each)
 const currentFrame = ref(0)
@@ -148,7 +149,6 @@ const commandInput = ref('')
 const commandHistory = ref<CommandEntry[]>([])
 const inputRef = ref<HTMLInputElement | null>(null)
 const isFocused = ref(false)
-const { getToken, removeToken } = useAuthToken()
 const dashboardAccessState = ref<'checking' | 'granted' | 'denied'>('checking')
 let dashboardAccessTask: Promise<boolean> | null = null
 
@@ -169,7 +169,7 @@ async function detectDashboardAccess() {
     return dashboardAccessTask
 
   dashboardAccessTask = (async () => {
-    const token = getToken()?.trim()
+    const token = getAuthToken()?.trim()
 
     if (token) {
       const hasValidToken = await verifyDashboardAccess(`Bearer ${token}`)
@@ -178,7 +178,7 @@ async function detectDashboardAccess() {
         return true
       }
 
-      removeToken()
+      removeAuthToken()
     }
 
     const canAccessWithoutToken = await verifyDashboardAccess()
@@ -346,7 +346,7 @@ async function handleCommand() {
 
   // sudo → grant access to dashboard
   if (cmd.startsWith('sudo')) {
-    navigateTo('/dashboard')
+    navigateTo('/dashboard/login')
     return
   }
 
@@ -395,12 +395,10 @@ async function handleCommand() {
 <template>
   <section class="mx-auto w-full max-w-2xl">
     <!-- Terminal Window -->
-    <div class="terminal overflow-hidden rounded-xl border border-white/[0.06]">
+    <div class="terminal overflow-hidden rounded-xl border border-white/6">
       <!-- macOS Title Bar -->
       <div
-        class="
-          flex items-center border-b border-white/[0.06] bg-[#1e1e1e] px-4 py-3
-        "
+        class="flex items-center border-b border-white/6 bg-[#1e1e1e] px-4 py-3"
       >
         <div class="flex gap-2">
           <span class="size-3 rounded-full bg-[#ff5f57]" />
@@ -461,7 +459,7 @@ async function handleCommand() {
         <!-- eslint-disable-next-line vue/no-v-html -->
         <pre
           class="
-            cat-art text-xs leading-snug text-[#8b949e]
+            cat-art text-xs/snug text-[#8b949e]
             md:text-[13px]
           "
           aria-label="ASCII art of a cat batting a ball"
@@ -618,7 +616,7 @@ async function handleCommand() {
       <!-- Terminal Footer Credit -->
       <div
         class="
-          border-t border-white/[0.04] bg-[#0c0c0c] px-5 py-2 text-[11px]
+          border-t border-white/4 bg-[#0c0c0c] px-5 py-2 text-[11px]
           text-white/15
           md:px-8
         "
