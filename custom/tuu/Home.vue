@@ -1,83 +1,70 @@
 <script setup lang="ts">
 import { Command, MousePointer2 } from '@lucide/vue'
 import { getAuthToken, removeAuthToken } from '@/utils/auth-token'
+import Cat from './Cat.vue'
 
 const { description, github } = useAppConfig()
 definePageMeta({ layout: 'tuu-home' })
 
-const { data: githubStats } = useFetch<{ stargazers_count: number, forks_count: number }>(
-  `https://api.github.com/repos/${github.replace('https://github.com/', '')}`,
-)
+interface GithubStats {
+  repo: string
+  stars: number
+  forks: number
+  expiresAt: number
+}
+
+const statsCache = useState<GithubStats | null>('tuu-github-stats', () => {
+  if (!import.meta.client)
+    return null
+
+  try {
+    const cached = JSON.parse(sessionStorage.getItem('tuu-github-stats') || 'null') as GithubStats | null
+    if (cached && typeof cached.repo === 'string'
+      && typeof cached.stars === 'number' && typeof cached.forks === 'number'
+      && typeof cached.expiresAt === 'number') {
+      return cached
+    }
+  }
+  catch {
+    // Browsing with storage blocked still loads fresh public statistics.
+  }
+  return null
+})
+
+const { data: githubStats } = useAsyncData('tuu-github-stats', async () => {
+  const data = await $fetch<{ stargazers_count: number, forks_count: number }>(
+    `https://api.github.com/repos/${github.replace('https://github.com/', '')}`,
+    { timeout: 4000, retry: 0 },
+  )
+  const stats = {
+    repo: github,
+    stars: data.stargazers_count,
+    forks: data.forks_count,
+    expiresAt: Date.now() + 5 * 60 * 1000,
+  }
+  statsCache.value = stats
+  if (import.meta.client) {
+    try {
+      sessionStorage.setItem('tuu-github-stats', JSON.stringify(stats))
+    }
+    catch {
+      // Storage is optional; the in-memory cache remains available.
+    }
+  }
+  return stats
+}, {
+  lazy: true,
+  getCachedData: () => {
+    const cached = statsCache.value
+    return cached?.repo === github && cached.expiresAt > Date.now() ? cached : undefined
+  },
+})
 const stats = computed(() => ({
-  stars: githubStats.value?.stargazers_count ?? 6000,
-  forks: githubStats.value?.forks_count ?? 4000,
+  stars: githubStats.value?.stars ?? 6000,
+  forks: githubStats.value?.forks ?? 4000,
 }))
 
-// Cat batting ball animation frames (7 frames, 5 lines each)
-const currentFrame = ref(0)
-
-const B = '<span class="ball">●</span>'
-
-const catFrames = [
-  // Frame 0: Cat watching ball on the ground
-  [
-    '                         ',
-    '    /\\_/\\              ',
-    `   ( o.o )         ${B}   `,
-    '    &gt; ^ &lt;               ',
-    '    /| |\\              ',
-  ].join('\n'),
-  // Frame 1: Cat reaches paw toward ball
-  [
-    '                         ',
-    '    /\\_/\\              ',
-    `   ( o.o )&gt;--  ${B}       `,
-    '    &gt; ^ &lt;               ',
-    '    /| |\\              ',
-  ].join('\n'),
-  // Frame 2: Paw makes contact!
-  [
-    '                         ',
-    '    /\\_/\\              ',
-    `   ( &gt;w&lt; )&gt;--${B}         `,
-    '    &gt; ^ &lt;               ',
-    '    /| |\\              ',
-  ].join('\n'),
-  // Frame 3: Ball launches upward
-  [
-    '                         ',
-    `    /\\_/\\       ${B}     `,
-    '   ( ^.^ )/             ',
-    '    &gt; ^ &lt;               ',
-    '    /| |\\              ',
-  ].join('\n'),
-  // Frame 4: Ball at peak
-  [
-    `              ${B}         `,
-    '    /\\_/\\              ',
-    '   ( ^.^ )              ',
-    '    &gt; ^ &lt;               ',
-    '    /| |\\              ',
-  ].join('\n'),
-  // Frame 5: Ball falling
-  [
-    `                    ${B}   `,
-    '    /\\_/\\              ',
-    '   ( o.o )              ',
-    '    &gt; ^ &lt;               ',
-    '    /| |\\              ',
-  ].join('\n'),
-  // Frame 6: Ball bounces back to ground
-  [
-    '                         ',
-    '    /\\_/\\              ',
-    '   ( o.o )              ',
-    `    &gt; ^ &lt;          ${B}   `,
-    '    /| |\\              ',
-  ].join('\n'),
-]
-
-let animInterval: ReturnType<typeof setInterval> | undefined
+let copyTimer: ReturnType<typeof setTimeout> | undefined
 const isTouchDevice = ref(false)
 const isModifierPressed = ref(false)
 const isSinkHovered = ref(false)
@@ -113,13 +100,6 @@ onMounted(() => {
   window.addEventListener('keyup', trackModifierKey)
   window.addEventListener('blur', resetModifierKey)
   void detectDashboardAccess()
-
-  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  if (!prefersReducedMotion) {
-    animInterval = setInterval(() => {
-      currentFrame.value = (currentFrame.value + 1) % catFrames.length
-    }, 500)
-  }
 })
 
 onUnmounted(() => {
@@ -127,8 +107,8 @@ onUnmounted(() => {
   window.removeEventListener('keyup', trackModifierKey)
   window.removeEventListener('blur', resetModifierKey)
 
-  if (animInterval)
-    clearInterval(animInterval)
+  if (copyTimer)
+    clearTimeout(copyTimer)
 })
 
 // Interactive terminal input
@@ -146,7 +126,9 @@ const copiedId = ref<number | null>(null)
 function copyToClipboard(entry: CommandEntry) {
   navigator.clipboard.writeText(entry.output!)
   copiedId.value = entry.id
-  setTimeout(() => {
+  if (copyTimer)
+    clearTimeout(copyTimer)
+  copyTimer = setTimeout(() => {
     if (copiedId.value === entry.id)
       copiedId.value = null
   }, 2000)
@@ -462,16 +444,7 @@ async function handleCommand() {
           </p>
         </div>
 
-        <!-- ASCII Cat Animation -->
-        <!-- eslint-disable-next-line vue/no-v-html -->
-        <pre
-          class="
-            cat-art text-xs/snug text-[#8b949e]
-            md:text-[13px]
-          "
-          aria-label="ASCII art of a cat batting a ball"
-          v-html="catFrames[currentFrame]"
-        />
+        <Cat />
 
         <!-- Description -->
         <p class="text-[13px] text-[#6e7681]">
@@ -684,13 +657,6 @@ async function handleCommand() {
   font-size: inherit;
   line-height: inherit;
   caret-color: #d4d4d4;
-}
-
-.cat-art :deep(.ball) {
-  color: #f0a030;
-  text-shadow:
-    0 0 6px rgba(240, 160, 48, 0.5),
-    0 0 14px rgba(240, 160, 48, 0.25);
 }
 
 .creating-cli {

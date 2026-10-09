@@ -6,11 +6,14 @@ The terminal homepage and error page belong to this fork. Keep their implementat
 
 ## Files
 
-- `Home.vue`: terminal commands, cat animation, authentication checks, and short-link creation through Sink's existing API.
-- `Error.vue`: terminal error screen and return-home action.
+- `Home.vue`: terminal commands, authentication checks, and short-link creation through Sink's existing API. Public GitHub statistics are cached for five minutes in memory and per-tab session storage.
+- `Cat.vue`: the isolated animation component; it pauses when the page is hidden or reduced motion is requested.
+- `Error.vue`: terminal error screen and return-home action; its flicker and recovery timers pause and clean up together.
 - `Layout.vue`: homepage layout.
 - `theme.css`: imports upstream's unchanged stylesheet, explicitly includes this directory in Tailwind's class scan, and scopes the monospace font to `.tuu-terminal` so dashboard typography follows upstream.
 - `head.ts`: points favicon and touch-icon entries to the fork's assets under `public/tuu/`, including on the error page.
+
+The terminal font is served locally from `public/tuu/fonts/`; its SIL Open Font License is included alongside the asset. It is preloaded only on terminal screens.
 
 Keep reusable terminal styles scoped to the components or prefixed with `.tuu-terminal`. Avoid redefining upstream's global theme tokens. Homepage GitHub statistics are fetched here rather than through an upstream presentation composable.
 
@@ -32,3 +35,13 @@ pnpm test --run
 ```
 
 Then check `/`, `/dashboard/login`, and a nonexistent short link in a browser. Verify the terminal's `sudo` command, authenticated short-link creation, duplicate-slug errors, mobile layout, and icons. Git merges cannot detect incompatible API or framework changes; these checks cover that remaining integration risk.
+
+## Performance regression checks
+
+With Python Playwright installed and a local preview already running, run:
+
+```sh
+python custom/tuu/check-performance.py http://localhost:7469
+```
+
+The browser checks cover visible/hidden/reduced-motion animation, statistics caching across reloads, cache expiry and invalidation, and leaving the error screen during its recovery timeout. They stub only the public GitHub statistics request and use local routes.

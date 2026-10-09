@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import type { NuxtError } from '#app'
+import { useDocumentVisibility, usePreferredReducedMotion } from '@vueuse/core'
 
 const props = defineProps<{
   error: NuxtError
 }>()
 
 useHead({
+  link: [
+    { rel: 'preload', href: '/tuu/fonts/JetBrainsMono-latin.woff2', as: 'font', type: 'font/woff2', crossorigin: '' },
+  ],
   meta: [
     { name: 'theme-color', content: '#050505' },
   ],
@@ -46,6 +50,9 @@ const asciiFrames = [
 
 const currentFrame = ref(0)
 const flickerClass = ref('')
+const visibility = useDocumentVisibility()
+const reducedMotion = usePreferredReducedMotion()
+const animate = computed(() => visibility.value === 'visible' && reducedMotion.value !== 'reduce')
 
 let animationTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -72,7 +79,7 @@ function scheduleFlicker() {
     }
 
     const recovery = 60 + Math.random() * 140
-    setTimeout(() => {
+    animationTimer = setTimeout(() => {
       flickerClass.value = ''
       currentFrame.value = 0
       scheduleFlicker()
@@ -80,17 +87,21 @@ function scheduleFlicker() {
   }, delay)
 }
 
-onMounted(() => {
-  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  if (!prefersReducedMotion) {
-    scheduleFlicker()
-  }
-})
-
-onUnmounted(() => {
+function stopFlicker() {
   if (animationTimer)
     clearTimeout(animationTimer)
-})
+  animationTimer = undefined
+  flickerClass.value = ''
+  currentFrame.value = 0
+}
+
+watch(animate, (enabled) => {
+  stopFlicker()
+  if (enabled)
+    scheduleFlicker()
+}, { immediate: true })
+
+onUnmounted(stopFlicker)
 
 function handleBack() {
   clearError({ redirect: '/' })
@@ -99,6 +110,7 @@ function handleBack() {
 
 <template>
   <div
+    :class="{ 'motion-paused': !animate }"
     class="
       tuu-terminal flex min-h-svh items-center justify-center bg-[#050505] p-4
       md:p-8
@@ -226,6 +238,11 @@ function handleBack() {
 </template>
 
 <style scoped>
+.motion-paused .neon-text,
+.motion-paused .cursor-block {
+  animation-play-state: paused;
+}
+
 @keyframes terminal-blink {
   0%,
   100% {
