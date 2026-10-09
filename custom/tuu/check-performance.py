@@ -118,8 +118,40 @@ def check_optional_network():
         browser.close()
     print('Offline statistics, blocked storage, local font, and terminal interaction checks passed')
 
+def check_bundle_budget():
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(reduced_motion='reduce')
+        page.route('https://api.github.com/repos/**', lambda route: route.fulfill(json={'stargazers_count': 7198, 'forks_count': 5322}))
+        page.goto(sys.argv[1])
+        page.wait_for_load_state('networkidle')
+        expect(page.locator('.cat-art')).to_be_visible()
+        page.wait_for_timeout(800)
+        metrics = page.evaluate("performance.getEntriesByType('resource').filter(e=>e.name.endsWith('.js')).map(e=>e.decodedBodySize)")
+        assert sum(metrics) < 400_000, f'Homepage JavaScript exceeds 400 KB: {sum(metrics)}'
+        assert len(metrics) <= 18, f'Homepage requested {len(metrics)} JavaScript files'
+        assert page.locator('link[rel="prefetch"]').count() == 0, 'Unrelated routes are prefetched in the initial HTML'
+        page.goto(sys.argv[1] + '/dashboard/login')
+        page.wait_for_load_state('networkidle')
+        expect(page.locator('[data-sonner-toaster]')).to_have_count(1)
+        languages = page.evaluate("""async () => {
+          const i18n = document.querySelector('#__nuxt').__vue_app__.config.globalProperties.$nuxt.$i18n;
+          const codes = i18n.localeCodes.value || i18n.localeCodes;
+          const result = {};
+          for (const code of codes) {
+            await i18n.setLocale(code);
+            result[code] = i18n.t('login.title');
+          }
+          return result;
+        }""")
+        assert len(languages) == 11
+        assert all(value and value != 'login.title' for value in languages.values()), languages
+        browser.close()
+    print(f'Homepage bundle budget passed: {sum(metrics)} bytes in {len(metrics)} scripts; lazy notifications and 11 languages passed')
+
 if __name__ == "__main__":
     check_animation()
     check_stats_cache()
     check_error_cleanup()
     check_optional_network()
+    check_bundle_budget()

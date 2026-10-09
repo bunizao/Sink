@@ -1,4 +1,5 @@
 wrangler.jsonc
+.nuxtrc
 .github/workflows/issue-assistant.yml
 .github/workflows/sync-upstream.yml
 modules/tuu.ts

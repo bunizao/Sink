@@ -1,0 +1,7 @@
+i18n.bundle.runtimeOnly=true
+i18n.bundle.dropMessageCompiler=true
+i18n.bundle.fullInstall=false
+vite.build.minify=terser
+vite.build.terserOptions.compress.passes=2
+experimental.defaults.nuxtLink.prefetchOn.visibility=false
+experimental.defaults.nuxtLink.prefetchOn.interaction=true

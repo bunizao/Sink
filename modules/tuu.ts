@@ -27,6 +27,36 @@ export default defineNuxtModule({
 
     nuxt.options.css.splice(stylesheetIndex, 1, resolve('../custom/tuu/theme.css'))
     addPlugin(resolve('../custom/tuu/head.ts'))
+    nuxt.hook('components:extend', (components) => {
+      const toaster = components.find(component => component.pascalName === 'Toaster')
+      if (toaster) {
+        toaster.filePath = resolve('../custom/tuu/Toaster.vue')
+        toaster.export = 'default'
+      }
+    })
+
+    nuxt.hook('build:manifest', (manifest) => {
+      // Dynamic routes still load on navigation; avoid fetching every SPA route up front.
+      for (const chunk of Object.values(manifest))
+        chunk.prefetch = false
+    })
+
+    nuxt.options.vite.plugins ||= []
+    nuxt.options.vite.plugins.push({
+      name: 'tuu-public-icons',
+      enforce: 'pre',
+      async resolveId(source, importer) {
+        if (source !== 'vue3-simple-icons' || !importer
+          || !['/app/layouts/default.vue', '/app/components/home/Hero.vue'].some(path => importer.includes(path))) {
+          return
+        }
+
+        // A separate module lets Rollup keep only the three public icons instead of the analytics icon set.
+        const resolved = await this.resolve(source, importer, { skipSelf: true })
+        if (resolved)
+          return `${resolved.id}?tuu-public-icons`
+      },
+    })
 
     nuxt.hook('prepare:types', ({ tsConfig, nodeTsConfig }) => {
       tsConfig.include?.push(resolve('../custom/tuu/**/*'))
