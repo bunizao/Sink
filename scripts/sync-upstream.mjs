@@ -43,8 +43,7 @@ function listUnmergedPaths(cwd) {
 
 function restoreExcludedPath(cwd, ref, filePath) {
   if (hasPathInCommit(cwd, ref, filePath)) {
-    runGit(['checkout', ref, '--', filePath], { cwd })
-    runGit(['add', '--', filePath], { cwd })
+    runGit(['restore', '--source', ref, '--staged', '--worktree', '--', filePath], { cwd })
     return
   }
 
@@ -112,15 +111,13 @@ function main() {
   )
 
   if (mergeResult.status !== 0) {
-    const excludedSet = new Set(excludedPaths)
     const conflictedPaths = listUnmergedPaths(cwd)
 
     for (const filePath of conflictedPaths) {
-      if (!excludedSet.has(filePath))
+      if (!excludedPaths.some(path => filePath === path || filePath.startsWith(`${path}/`)))
         continue
 
-      runGit(['checkout', '--ours', '--', filePath], { cwd })
-      runGit(['add', '--', filePath], { cwd })
+      restoreExcludedPath(cwd, preSyncSha, filePath)
     }
 
     const remainingConflicts = listUnmergedPaths(cwd)

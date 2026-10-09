@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -61,6 +61,10 @@ function setupRepoPair() {
   writeFile(currentDir, 'app/error.vue', '<template>base-error</template>\n')
   writeFile(currentDir, 'app/pages/index.vue', '<template>base-home</template>\n')
   writeFile(currentDir, 'server/api/example.ts', 'export const value = "base"\n')
+  writeFile(currentDir, 'custom/tuu/Home.vue', '<template>base-custom-home</template>\n')
+  writeFile(currentDir, 'custom/tuu/Removed.vue', '<template>base-removed</template>\n')
+  writeFile(currentDir, 'modules/tuu.ts', 'export default "base-module"\n')
+  writeFile(currentDir, 'public/tuu/icon.png', 'base-icon\n')
   commitAll(currentDir, 'feat: create base state')
 
   run('git', ['clone', currentDir, upstreamDir], rootDir)
@@ -79,18 +83,27 @@ afterEach(() => {
 })
 
 describe('sync-upstream script', () => {
-  it('preserves excluded frontend files while merging upstream backend changes', () => {
+  it('updates upstream frontend files while preserving the isolated customization directories', () => {
     const { rootDir, currentDir, upstreamDir } = setupRepoPair()
     cleanupDirs.push(rootDir)
 
-    writeFile(currentDir, 'app/error.vue', '<template>local-error</template>\n')
-    writeFile(currentDir, 'app/pages/index.vue', '<template>local-home</template>\n')
+    writeFile(currentDir, 'custom/tuu/Home.vue', '<template>local-home</template>\n')
+    writeFile(currentDir, 'modules/tuu.ts', 'export default "local-module"\n')
+    writeFile(currentDir, 'public/tuu/icon.png', 'local-icon\n')
+    run('git', ['rm', 'custom/tuu/Removed.vue'], currentDir)
     commitAll(currentDir, 'feat: customize frontend')
 
     writeFile(upstreamDir, 'app/error.vue', '<template>upstream-error</template>\n')
     writeFile(upstreamDir, 'app/pages/index.vue', '<template>upstream-home</template>\n')
     writeFile(upstreamDir, 'server/api/example.ts', 'export const value = "upstream"\n')
     writeFile(upstreamDir, 'server/api/new.ts', 'export const added = true\n')
+    writeFile(upstreamDir, 'custom/tuu/Home.vue', '<template>upstream-custom-home</template>\n')
+    writeFile(upstreamDir, 'custom/tuu/Removed.vue', '<template>upstream-removed</template>\n')
+    writeFile(upstreamDir, 'custom/tuu/New.vue', '<template>upstream-new</template>\n')
+    writeFile(upstreamDir, 'modules/tuu.ts', 'export default "upstream-module"\n')
+    writeFile(upstreamDir, 'public/tuu/icon.png', 'upstream-icon\n')
+    writeFile(upstreamDir, 'public/tuu/new.png', 'upstream-new-icon\n')
+    writeFile(upstreamDir, 'custom/tuu-other/Home.vue', '<template>upstream-other</template>\n')
     commitAll(upstreamDir, 'feat: update upstream files')
 
     const result = runAllowFailure('node', [scriptPath], currentDir, {
@@ -100,8 +113,15 @@ describe('sync-upstream script', () => {
 
     expect(result.status).toBe(0)
     expect(run('git', ['remote', 'get-url', '--push', 'upstream'], currentDir)).toBe('DISABLED')
-    expect(readFileSync(join(currentDir, 'app/error.vue'), 'utf8')).toBe('<template>local-error</template>\n')
-    expect(readFileSync(join(currentDir, 'app/pages/index.vue'), 'utf8')).toBe('<template>local-home</template>\n')
+    expect(readFileSync(join(currentDir, 'app/error.vue'), 'utf8')).toBe('<template>upstream-error</template>\n')
+    expect(readFileSync(join(currentDir, 'app/pages/index.vue'), 'utf8')).toBe('<template>upstream-home</template>\n')
+    expect(readFileSync(join(currentDir, 'custom/tuu/Home.vue'), 'utf8')).toBe('<template>local-home</template>\n')
+    expect(readFileSync(join(currentDir, 'modules/tuu.ts'), 'utf8')).toBe('export default "local-module"\n')
+    expect(readFileSync(join(currentDir, 'public/tuu/icon.png'), 'utf8')).toBe('local-icon\n')
+    expect(existsSync(join(currentDir, 'custom/tuu/Removed.vue'))).toBe(false)
+    expect(existsSync(join(currentDir, 'custom/tuu/New.vue'))).toBe(false)
+    expect(existsSync(join(currentDir, 'public/tuu/new.png'))).toBe(false)
+    expect(readFileSync(join(currentDir, 'custom/tuu-other/Home.vue'), 'utf8')).toBe('<template>upstream-other</template>\n')
     expect(readFileSync(join(currentDir, 'server/api/new.ts'), 'utf8')).toBe('export const added = true\n')
 
     const unresolved = run('git', ['diff', '--name-only', '--diff-filter=U'], currentDir)

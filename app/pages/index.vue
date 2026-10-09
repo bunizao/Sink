@@ -1,9 +1,14 @@
-<script setup lang="ts">
-definePageMeta({
-  layout: 'home',
-})
-</script>
-
 <template>
-  <HomeHero />
+  <div
+    class="
+      flex flex-col justify-center overflow-x-clip bg-background text-foreground
+    "
+  >
+    <HomeHero />
+    <HomeLogos />
+    <HomeFeatures />
+    <HomeStats />
+    <HomeTestimonials />
+    <HomeCta />
+  </div>
 </template>

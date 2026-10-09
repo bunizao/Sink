@@ -9,7 +9,7 @@ useHead({
 <template>
   <div
     class="
-      flex min-h-svh items-center justify-center bg-[#050505] p-4 font-mono
+      tuu-terminal flex min-h-svh items-center justify-center bg-[#050505] p-4
       md:p-8
     "
   >
